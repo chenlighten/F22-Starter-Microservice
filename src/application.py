@@ -4,7 +4,6 @@ from flask import Flask, Response, request
 from flask_cors import CORS
 from tables import Course, Section, Attendance
 from data_access import DataAccess
-from columbia_student_resource import ColumbiaStudentResource
 
 
 # Create the Flask application object.
