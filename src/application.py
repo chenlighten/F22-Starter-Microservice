@@ -47,19 +47,6 @@ def get_health():
     return result
 
 
-@app.route("/api/students/<uni>", methods=["GET"])
-def get_student_by_uni(uni):
-
-    result = ColumbiaStudentResource.get_by_key(uni)
-
-    if result:
-        rsp = Response(json.dumps(result), status=200, content_type="application/json")
-    else:
-        rsp = Response("NOT FOUND", status=404, content_type="text/plain")
-
-    return rsp
-
-
 '''
 Create a new course.
 Request body:
