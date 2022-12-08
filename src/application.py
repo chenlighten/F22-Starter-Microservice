@@ -1,5 +1,6 @@
 import json
-from datetime import datetime
+import copy
+from datetime import datetime, date
 from flask import Flask, Response, request
 from flask_cors import CORS
 from tables import Course, Section, Attendance
@@ -22,13 +23,13 @@ Global error handler, we can raise exceptions anywhere in the code,
 and error message will be returned to the request sender.
 Todo: more return codes and messages.
 '''
-@app.errorhandler(Exception)
-def handle_exception(e):
-    return Response(
-        str(e),
-        status = 500,
-        content_type="application.json"
-    )
+# @app.errorhandler(Exception)
+# def handle_exception(e):
+#     return Response(
+#         str(e),
+#         status = 500,
+#         content_type="application.json"
+#     )
 
 
 @app.get("/api/health")
@@ -58,11 +59,11 @@ Course name must be unique.
 '''
 @app.post("/api/courses/create")
 def courses_create_post():
-    json_body = request.json()
+    json_body = request.json
     course = Course(
         course_name = json_body.get("course_name"),
         prof_name = json_body.get("prof_name"),
-        time = json_body["time"])
+        time = json_body.get("time"))
     
     dao.insert(course)
 
@@ -99,16 +100,15 @@ Request body should contain the date for the course section:
 '''
 @app.post("/api/courses/<course_name>/sections/create")
 def sections_create_post(course_name: str):
-    json_body = request.json()
+    json_body = request.json
     course: Course = dao.select_one_by(Course, lambda: Course.course_name == course_name)
-    date = datetime.date(
-        json_body.get("year"),
-        json_body.get("month"),
-        json_body.get("day")
+    section_date = date(
+        int(json_body.get("year")),
+        int(json_body.get("month")),
+        int(json_body.get("day"))
     )
 
-    section = Section(course_id = course.course_id, section_date = date)
-
+    section = Section(course_id = course.course_id, section_date = section_date)
     dao.insert(section)
     
     return Response("SUCCESS", status = 200, content_type="text/plain")
@@ -120,7 +120,8 @@ Query all the sections for a course.
 @app.get("/api/courses/<course_name>/sections")
 def sections_all_get(course_name: str):
     course: Course = dao.select_one_by(Course, lambda: Course.course_name == course_name)
-    res: list[str] = list(map(str, dao.select_all_by(Section, lambda: Section.course_id == course.course_id)))
+    this_course_id = course.course_id
+    res: list[str] = list(map(str, dao.select_all_by(Section, lambda: Section.course_id == this_course_id)))
     return Response(json.dumps(res), status = 200, content_type="application/json")
 
 
@@ -138,16 +139,21 @@ Request body should contain the date and student id.
 @app.post("/api/courses/<course_name>/checkin")
 def courses_checkin_post(course_name: str):
     course: Course = dao.select_one_by(Course, lambda: Course.course_name == course_name)
-    json_body = request.json()
-    date = datetime.date(
+    this_course_id = course.course_id
+    json_body = request.json
+    checkin_date = date(
         int(json_body.get("year")),
         int(json_body.get("month")),
         int(json_body.get("day"))
     )
-    student_id = json_body.get("student_id")
+    student_id = int(json_body.get("student_id"))
 
-    section: Section = dao.select_one_by(Section,
-        lambda: Section.course_id == course.course_id and Section.section_date == date)
+    sections: list[Section] = dao.select_all_by(Section,
+        lambda: Section.course_id == this_course_id)
+    try:
+        section = next(filter(lambda x: x.section_date == checkin_date, sections))
+    except:
+        raise Exception(f"There is not any section for date {str(checkin_date)}")
     atten: Attendance = Attendance(student_id = student_id, section_id = section.section_id)
 
     dao.insert(atten)
@@ -161,11 +167,19 @@ Query how many students were present in all the sections of a course.
 @app.get("/api/courses/<course_name>/presence")
 def courses_presence_get(course_name: str):
     course: Course = dao.select_one_by(Course, lambda: Course.course_name == course_name)
-    sections: list[Section] = dao.select_all_by(Section, lambda: Section.course_id == course.course_id)
+    this_course_id = course.course_id
+    sections: list[Section] = dao.select_all_by(Section, lambda: Section.course_id == this_course_id)
 
-    res: list[dict] = [{str(section.section_date): 
-            dao.select_size_by(Attendance, lambda: Attendance.section_id == section.section_id)}
-        for section in sections]
+    res = []
+    for section in sections:
+        # Bad practice, modify it later
+        this_section_id = section.section_id
+        sz = len(dao.select_all_by(Attendance, lambda: Attendance.section_id == this_section_id))
+        res.append({str(section.section_date): sz})
+
+    # res: list[dict] = [{str(section.section_date): 
+    #         dao.select_size_by(Attendance, lambda: Attendance.section_id == section.section_id)}
+    #     for section in sections]
     
     return Response(json.dumps(res), status = 200, content_type="application/json")
 
@@ -182,7 +196,8 @@ def students_presence_get(student_id: str):
     res = {}
     courses: list[Course] = dao.select_all(Course)
     for course in courses:
-        course_sections = dao.select_all_by(Section.section_id, lambda: Section.course_id == course.course_id)
+        this_course_id = course.course_id
+        course_sections = dao.select_all_by(Section.section_id, lambda: Section.course_id == this_course_id)
         student_sections = dao.select_all_by(Attendance.section_id, lambda: Attendance.student_id == student_id)
         res[course.course_name] = len(set(course_sections) & set(student_sections))
     

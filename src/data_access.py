@@ -32,3 +32,8 @@ class DataAccess:
         with Session(self.engine) as session:
             return session.scalar(
                 select(func.count(inspect(table).primary_key)).where(condition))
+    
+    def delete_all(self, table):
+        with Session(self.engine) as session:
+            session.query(table).delete()
+            session.commit()
